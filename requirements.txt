@@ -9,3 +9,4 @@ python-binance
 groq
 streamlit-gsheets
 streamlit-autorefresh
+st-gsheets-connection

@@ -179,5 +179,5 @@ else:
         sonuc = backtest_stratejisi(v_df)
         st.sidebar.write(f"Başlangıç: 10.000₺")
         st.sidebar.write(f"Sonuç: **{sonuc:,.2f} ₺**")
-else:
+    else:
     st.warning("Veri bekleniyor... Lütfen Google Sheets bağlantısını kontrol edin.")

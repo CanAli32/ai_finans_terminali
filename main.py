@@ -89,12 +89,64 @@ if not df.empty:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Fiyat", f"{son_veri['Fiyat']} ₺")
     c2.metric("RSI", f"{son_veri['RSI']}")
+        # --- VERİ TEMİZLEME VE METRİKLER ---
     c3.metric("Onay Skoru", f"%{son_veri['Onay_Skoru']}")
+    
     import re
-    raw_rsi = str(son_veri['RSI'])
+    # RSI verisini güvenli hale getiriyoruz (Hatanın çözümü burada)
+    raw_rsi = str(son_veri.get('RSI', '50')) # Veri yoksa varsayılan 50
     clean_rsi = re.sub(r'[^\d.]', '', raw_rsi) # Sadece rakam ve noktayı tut
-    rsi_degeri = float(clean_rsi) if clean_rsi else 50.0
+    rsi_degeri = float(clean_rsi) if clean_rsi else 50.0 # Boşsa 50.0 yap
+    
     sinyal = "🚀 AL" if rsi_degeri < 35 else ("⚠️ SAT" if rsi_degeri > 65 else "⚖️ NÖTR")
+    c4.metric("Sinyal", sinyal)
+
+    # --- 6. GÖRSELLEŞTİRME VE AI KARARI ---
+    st.divider()
+    col_left, col_right = st.columns([1, 2])
+
+    with col_left:
+        st.subheader("💡 Robot Kararı & AI")
+        if st.button("Güncel AI Analizi Al"):
+            # Temizlenmiş rsi_degeri'ni AI fonksiyonuna gönderiyoruz
+            analiz = ai_analiz_al(son_veri['Fiyat'], rsi_degeri, secilen)
+            st.info(analiz)
+        
+        # HATA VEREN SATIR DÜZELTİLDİ: Artık rsi_degeri kullanılıyor
+        if rsi_degeri < 30:
+            st.warning("RSI Aşırı Satım Bölgesinde!")
+            if st.button(f"{secilen} Satın Al"):
+                res = islem_yap(secilen.replace("₺", "USDT"), 0.001, "AL")
+                if res: 
+                    st.success("İşlem Başarılı!")
+                    bildirim_gonder("İşlem Gerçekleşti", f"{secilen} alımı yapıldı.")
+
+    with col_right:
+        # Mum Grafiği veya Çizgi Grafik
+        import plotly.graph_objects as go
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=v_df['Tarih'], 
+            y=v_df['Fiyat'], 
+            mode='lines+markers', 
+            name="Fiyat", 
+            line=dict(color='#00ffcc')
+        ))
+        fig.update_layout(
+            template="plotly_dark", 
+            height=400, 
+            margin=dict(l=20, r=20, t=20, b=20)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    # --- 7. SIDEBAR ARAÇLARI ---
+    if st.sidebar.button("Backtest Çalıştır"):
+        sonuc = backtest_stratejisi(v_df)
+        st.sidebar.write(f"Başlangıç: 10.000₺")
+        st.sidebar.write(f"Sonuç: **{sonuc:,.2f} ₺**")
+else:
+    st.warning("Veri bekleniyor... Lütfen Google Sheets bağlantısını kontrol edin.")
+
     c4.metric("Sinyal", sinyal)
 
     # --- 6. GÖRSELLEŞTİRME VE AI KARARI ---

@@ -18,7 +18,7 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_data():
     try:
-        data = conn.read(worksheet="Borsa_Analiz_Arsivi-1")
+        data = conn.read()
         return data
     except Exception as e:
         st.error(f"Veri Bağlantı Hatası: {e}")

@@ -5,3 +5,7 @@ feedparser
 requests
 yfinance
 openpyxl
+python-binance
+groq
+streamlit-gsheets
+streamlit-autorefresh

@@ -90,9 +90,11 @@ if not df.empty:
     c1.metric("Fiyat", f"{son_veri['Fiyat']} ₺")
     c2.metric("RSI", f"{son_veri['RSI']}")
     c3.metric("Onay Skoru", f"%{son_veri['Onay_Skoru']}")
-    rsi_degeri = float(son_veri['RSI'])
+    import re
+    raw_rsi = str(son_veri['RSI'])
+    clean_rsi = re.sub(r'[^\d.]', '', raw_rsi) # Sadece rakam ve noktayı tut
+    rsi_degeri = float(clean_rsi) if clean_rsi else 50.0
     sinyal = "🚀 AL" if rsi_degeri < 35 else ("⚠️ SAT" if rsi_degeri > 65 else "⚖️ NÖTR")
-
     c4.metric("Sinyal", sinyal)
 
     # --- 6. GÖRSELLEŞTİRME VE AI KARARI ---

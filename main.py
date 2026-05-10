@@ -88,7 +88,7 @@ if not df.empty:
     # Metrik Paneli
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Fiyat", f"{son_veri['Fiyat']} ₺")
-    c2.metric("RSI", round(son_veri['RSI'], 2))
+    c2.metric("RSI", f"{son_veri['RSI']}")
     c3.metric("Onay Skoru", f"%{son_veri['Onay_Skoru']}")
     sinyal = "🚀 AL" if son_veri['RSI'] < 35 else ("⚠️ SAT" if son_veri['RSI'] > 65 else "⚖️ NÖTR")
     c4.metric("Sinyal", sinyal)

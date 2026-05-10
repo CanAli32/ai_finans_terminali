@@ -107,7 +107,7 @@ if not df.empty:
             analiz = ai_analiz_al(son_veri['Fiyat'], son_veri['RSI'], secilen)
             st.info(analiz)
         
-        if son_veri['RSI'] < 30:
+        if float(son_veri['RSI']) < 30:
             st.warning("RSI Aşırı Satım Bölgesinde!")
             if st.button(f"{secilen} Satın Al"):
                 res = islem_yap(secilen.replace("₺", "USDT"), 0.001, "AL") # Örnek dönüşüm

@@ -90,7 +90,8 @@ if not df.empty:
     c1.metric("Fiyat", f"{son_veri['Fiyat']} ₺")
     c2.metric("RSI", f"{son_veri['RSI']}")
     c3.metric("Onay Skoru", f"%{son_veri['Onay_Skoru']}")
-    sinyal = "🚀 AL" if son_veri['RSI'] < 35 else ("⚠️ SAT" if son_veri['RSI'] > 65 else "⚖️ NÖTR")
+    File "/mount/src/ai_finans_terminali/main.py", line 93, in <module>
+    sinyal = "🚀 AL" if son_veri['RSI'] < 35 
     c4.metric("Sinyal", sinyal)
 
     # --- 6. GÖRSELLEŞTİRME VE AI KARARI ---

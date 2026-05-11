@@ -8,7 +8,6 @@ import requests
 import re
 from datetime import datetime
 
---- 1. AYARLAR VE YAPILANDIRMA ---
 st.set_page_config(page_title="AI Finansal Terminal Pro", layout="wide", page_icon="📈")
 
 Sabitler

@@ -4,7 +4,4 @@ pandas_ta
 yfinance
 plotly
 requests
-python-binance
-st-gsheets-connection
-streamlit-autorefresh
 groq

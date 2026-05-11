@@ -1,7 +1,10 @@
 streamlit
 pandas
+pandas_ta
+yfinance
 plotly
+requests
+ollama
 python-binance
-groq
-st-gsheets-connection
+streamlit-gsheets
 streamlit-autorefresh

@@ -5,3 +5,6 @@ python-binance
 groq
 st-gsheets-connection
 streamlit-autorefresh
+python-binance
+sqlite3-binary
+openpyxl

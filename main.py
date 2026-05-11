@@ -19,10 +19,13 @@ KRIPTO_LISTESI = ["BTC-USD", "ETH-USD", "SOL-USD", "AVAX-USD"]
 BIST_LISTESI = ["THYAO.IS", "EREGL.IS", "ASELS.IS", "TUPRS.IS", "KCHOL.IS", "AKBNK.IS"]
 
 def telegram_gonder(mesaj):
-url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-try:
-requests.post(url, json={"chat_id": CHAT_ID, "text": mesaj})
-except: pass
+    # Bu satır ve altındakiler mutlaka içeride (sağda) olmalı
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    try:
+        requests.post(url, json={"chat_id": CHAT_ID, "text": mesaj})
+    except: 
+        pass
+
 
 def get_crypto_data(hisse_kodu):
 ticker = yf.Ticker(hisse_kodu)

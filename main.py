@@ -18,8 +18,6 @@ MODEL_ADI = "llama3"
 KRIPTO_LISTESI = ["BTC-USD", "ETH-USD", "SOL-USD", "AVAX-USD"]
 BIST_LISTESI = ["THYAO.IS", "EREGL.IS", "ASELS.IS", "TUPRS.IS", "KCHOL.IS", "AKBNK.IS"]
 
---- 2. YARDIMCI FONKSİYONLAR ---
-
 def telegram_gonder(mesaj):
 url = f"https://telegram.org{TELEGRAM_TOKEN}/sendMessage"
 try:
@@ -46,7 +44,6 @@ return res['message']['content']
 except:
 return "Ollama bağlantısı kurulamadı. (Lütfen Ollama'nın çalıştığından emin olun)"
 
---- 3. STREAMLIT ARAYÜZÜ ---
 
 st.sidebar.title("🤖 AI Robot Kontrol")
 kategori = st.sidebar.radio("Varlık Türü:", ["Kripto", "BIST"])

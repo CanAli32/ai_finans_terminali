@@ -13,7 +13,7 @@ st.set_page_config(page_title="AI Finansal Terminal Pro", layout="wide", page_ic
 # Sabitler (Secrets'tan veya varsayılan değerlerden alınır)
 TELEGRAM_TOKEN = st.secrets.get("TELEGRAM_TOKEN", "8456680476:AAFRyBdZUdWs4ZA3DF9KK_78dmmUDfF_YUs")
 CHAT_ID = st.secrets.get("CHAT_ID", "6712642767")
-GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "BURAYA_GROQ_API_ANAHTARINI_YAZIN")
+GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "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")
 
 KRIPTO_LISTESI = ["BTC-USD", "ETH-USD", "SOL-USD", "AVAX-USD"]
 BIST_LISTESI = ["THYAO.IS", "EREGL.IS", "ASELS.IS", "TUPRS.IS", "KCHOL.IS", "AKBNK.IS"]

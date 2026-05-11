@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import pandas_ta as ta
-import yfinance as yf
 import plotly.graph_objects as go
 import requests
 from datetime import datetime
@@ -23,10 +22,12 @@ binance = Spot(
 
 TELEGRAM_TOKEN = st.secrets.get("TELEGRAM_TOKEN", "")
 CHAT_ID = st.secrets.get("CHAT_ID", "")
+
+# ----------------- KRİPTO LİSTESİNİ TR'DEN ÇEK -----------------
 def get_binance_tr_symbols():
     try:
-        exchange_info = binance.exchange_info()
-        symbols = exchange_info["symbols"]
+        info = binance.exchange_info()
+        symbols = info["symbols"]
         try_pairs = [s["symbol"] for s in symbols if s["symbol"].endswith("TRY")]
         return sorted(try_pairs)
     except:
@@ -35,7 +36,7 @@ def get_binance_tr_symbols():
 KRIPTO_LISTESI = get_binance_tr_symbols()
 BIST_LISTESI = ["THYAO.IS", "EREGL.IS", "ASELS.IS", "TUPRS.IS", "KCHOL.IS", "AKBNK.IS"]
 
-# ----------------- YARDIMCI FONKSİYONLAR -----------------
+# ----------------- TELEGRAM -----------------
 def telegram_gonder(mesaj: str):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
@@ -43,28 +44,34 @@ def telegram_gonder(mesaj: str):
     except:
         pass
 
+# ----------------- VERİ ÇEKME (BINANCE TR) -----------------
+def get_crypto_data(symbol):
+    try:
+        klines = binance.klines(symbol=symbol, interval="1d", limit=180)
 
-def get_crypto_data(hisse_kodu: str) -> pd.DataFrame:
-    # Binance TR fiyatları TRY olduğu için yfinance'tan USD paritesi çekiyoruz
-    # Örn: BTCTRY → BTC-USD
-    if hisse_kodu.endswith("TRY"):
-        symbol = hisse_kodu.replace("TRY", "-USD")
-    else:
-        symbol = hisse_kodu
+        df = pd.DataFrame(klines, columns=[
+            "time", "open", "high", "low", "close", "volume",
+            "close_time", "quote_asset_volume", "number_of_trades",
+            "taker_buy_base", "taker_buy_quote", "ignore"
+        ])
 
-    ticker = yf.Ticker(symbol)
-    df = ticker.history(period="6mo", interval="1d")
-    if not df.empty:
+        df["time"] = pd.to_datetime(df["time"], unit="ms")
+        df["Close"] = df["close"].astype(float)
+
         df["RSI"] = ta.rsi(df["Close"], length=14)
         df["SMA20"] = ta.sma(df["Close"], length=20)
+
         return df
-    return pd.DataFrame()
 
+    except Exception as e:
+        st.error(f"Veri çekme hatası: {e}")
+        return pd.DataFrame()
 
+# ----------------- AI ANALİZ -----------------
 def ai_analiz_al(hisse_kodu, fiyat, rsi, sma):
     return "Cloud ortamında Ollama desteklenmediği için AI analizi devre dışı."
 
-
+# ----------------- AL / SAT -----------------
 def binance_al(symbol, try_miktar):
     try:
         fiyat = float(binance.ticker_price(symbol)["price"])
@@ -80,7 +87,6 @@ def binance_al(symbol, try_miktar):
     except Exception as e:
         return None, None, str(e)
 
-
 def binance_sat(symbol, adet):
     try:
         order = binance.new_order(
@@ -93,7 +99,7 @@ def binance_sat(symbol, adet):
     except Exception as e:
         return str(e)
 
-
+# ----------------- KAYIT -----------------
 def kaydet_sqlite(tarih, varlik, fiyat, rsi, onay, analiz):
     conn = sqlite3.connect("trade_kayitlari.db")
     cursor = conn.cursor()
@@ -112,7 +118,6 @@ def kaydet_sqlite(tarih, varlik, fiyat, rsi, onay, analiz):
     conn.commit()
     conn.close()
 
-
 def kaydet_excel(tarih, varlik, fiyat, rsi, onay, analiz):
     dosya = "Borsa_Analizi_Arsivi.xlsx"
     yeni_veri = pd.DataFrame([{
@@ -130,8 +135,7 @@ def kaydet_excel(tarih, varlik, fiyat, rsi, onay, analiz):
         df = yeni_veri
     df.to_excel(dosya, index=False)
 
-
-# ----------------- SIDEBAR -----------------
+# ----------------- ARAYÜZ -----------------
 st.sidebar.subheader("⚙️ Trade Ayarları")
 analiz_dongu = st.sidebar.number_input("Analiz Döngüsü (dakika)", 1, 120, 5)
 yuzde_kar = st.sidebar.number_input("Satış Kar Yüzdesi (%)", 1, 50, 5)
@@ -157,7 +161,7 @@ if not df.empty:
     toplam_onay = onay_rsi + onay_trend
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Fiyat (USD)", f"{fiyat:,.2f}")
+    c1.metric("Fiyat (TRY)", f"{fiyat:,.2f}")
     c2.metric("RSI (14)", f"{rsi:.2f}")
     c3.metric("Onay Skoru", f"{toplam_onay}/2")
     sinyal = "🚀 GÜÇLÜ AL" if toplam_onay == 2 else ("⚖️ NÖTR" if toplam_onay == 1 else "⚠️ BEKLE")
@@ -179,10 +183,10 @@ if not df.empty:
 
     with col_right:
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df.index, y=df["Close"], name="Fiyat"))
-        fig.add_trace(go.Scatter(x=df.index, y=df["SMA20"], name="SMA20"))
+        fig.add_trace(go.Scatter(x=df["time"], y=df["Close"], name="Fiyat"))
+        fig.add_trace(go.Scatter(x=df["time"], y=df["SMA20"], name="SMA20"))
         fig.update_layout(template="plotly_dark", height=450, title=f"{secilen} Canlı Grafik")
         st.plotly_chart(fig, use_container_width=True)
 
 else:
-    st.error("Veri çekilemedi. İnternet bağlantınızı veya sembolü kontrol edin.")
+    st.error("Veri çekilemedi. Binance TR bağlantısını kontrol edin.")

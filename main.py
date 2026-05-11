@@ -4,7 +4,7 @@ import pandas_ta as ta
 import plotly.graph_objects as go
 import requests
 from datetime import datetime
-from binance.spot import Spot
+from binance.client import Client
 import sqlite3
 
 # ----------------- AYARLAR -----------------
@@ -13,28 +13,27 @@ st.set_page_config(page_title="AI Finansal Terminal Pro", layout="wide", page_ic
 api_key = st.secrets["BINANCE_API_KEY"]
 api_secret = st.secrets["BINANCE_API_SECRET"]
 
-# Binance TR endpoint
-binance = Spot(
-    api_key=api_key,
-    api_secret=api_secret,
-    base_url="https://api.binance.me"
-)
+# Binance Global
+binance = Client(api_key, api_secret)
 
 TELEGRAM_TOKEN = st.secrets.get("TELEGRAM_TOKEN", "")
 CHAT_ID = st.secrets.get("CHAT_ID", "")
 
-# ----------------- KRİPTO LİSTESİNİ TR'DEN ÇEK -----------------
-def get_binance_tr_symbols():
+# ----------------- KRİPTO LİSTESİ (GLOBAL USDT PARİTELERİ) -----------------
+def get_binance_global_usdt_symbols():
     try:
-        info = binance.exchange_info()
+        info = binance.get_exchange_info()
         symbols = info["symbols"]
-        try_pairs = [s["symbol"] for s in symbols if s["symbol"].endswith("TRY")]
-        return sorted(try_pairs)
+        usdt_pairs = [
+            s["symbol"] for s in symbols
+            if s["quoteAsset"] == "USDT" and s["status"] == "TRADING"
+        ]
+        return sorted(usdt_pairs)
     except:
-        return ["BTCTRY", "ETHTRY", "USDTTRY"]
+        return ["BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "BNBUSDT"]
 
-KRIPTO_LISTESI = get_binance_tr_symbols()
-BIST_LISTESI = ["THYAO.IS", "EREGL.IS", "ASELS.IS", "TUPRS.IS", "KCHOL.IS", "AKBNK.IS"]
+KRIPTO_LISTESI = get_binance_global_usdt_symbols()
+BIST_LISTESI = ["THYAO.IS", "EREGL.IS", "ASELS.IS", "TUPRS.IS", "KCHOL.IS", "AKBNK.IS"]  # Şimdilik pasif
 
 # ----------------- TELEGRAM -----------------
 def telegram_gonder(mesaj: str):
@@ -44,10 +43,10 @@ def telegram_gonder(mesaj: str):
     except:
         pass
 
-# ----------------- VERİ ÇEKME (BINANCE TR) -----------------
+# ----------------- VERİ ÇEKME (BINANCE GLOBAL) -----------------
 def get_crypto_data(symbol):
     try:
-        klines = binance.klines(symbol=symbol, interval="1d", limit=180)
+        klines = binance.get_klines(symbol=symbol, interval=Client.KLINE_INTERVAL_1DAY, limit=180)
 
         df = pd.DataFrame(klines, columns=[
             "time", "open", "high", "low", "close", "volume",
@@ -71,17 +70,15 @@ def get_crypto_data(symbol):
 def ai_analiz_al(hisse_kodu, fiyat, rsi, sma):
     return "Cloud ortamında Ollama desteklenmediği için AI analizi devre dışı."
 
-# ----------------- AL / SAT -----------------
-def binance_al(symbol, try_miktar):
+# ----------------- AL / SAT (GLOBAL) -----------------
+def binance_al(symbol, usdt_miktar):
     try:
-        fiyat = float(binance.ticker_price(symbol)["price"])
-        adet = round(try_miktar / fiyat, 6)
+        fiyat = float(binance.get_symbol_ticker(symbol=symbol)["price"])
+        adet = round(usdt_miktar / fiyat, 6)
 
-        order = binance.new_order(
+        order = binance.order_market_buy(
             symbol=symbol,
-            side="BUY",
-            type="MARKET",
-            quoteOrderQty=try_miktar
+            quoteOrderQty=usdt_miktar
         )
         return fiyat, adet, order
     except Exception as e:
@@ -89,10 +86,8 @@ def binance_al(symbol, try_miktar):
 
 def binance_sat(symbol, adet):
     try:
-        order = binance.new_order(
+        order = binance.order_market_sell(
             symbol=symbol,
-            side="SELL",
-            type="MARKET",
             quantity=adet
         )
         return order
@@ -140,11 +135,11 @@ st.sidebar.subheader("⚙️ Trade Ayarları")
 analiz_dongu = st.sidebar.number_input("Analiz Döngüsü (dakika)", 1, 120, 5)
 yuzde_kar = st.sidebar.number_input("Satış Kar Yüzdesi (%)", 1, 50, 5)
 yuzde_zarar = st.sidebar.number_input("Zarar Kes (%)", 1, 50, 3)
-miktar = st.sidebar.number_input("Alım Miktarı (TRY)", 10, 100000, 50)
+miktar = st.sidebar.number_input("Alım Miktarı (USDT)", 10, 100000, 50)
 
 st.sidebar.title("🤖 AI Robot Kontrol")
-kategori = st.sidebar.radio("Varlık Türü:", ["Kripto", "BIST"])
-liste = KRIPTO_LISTESI if kategori == "Kripto" else BIST_LISTESI
+kategori = st.sidebar.radio("Varlık Türü:", ["Kripto"])  # BIST şimdilik devre dışı
+liste = KRIPTO_LISTESI
 secilen = st.sidebar.selectbox("Varlık Seç:", liste)
 
 # ----------------- VERİ ÇEKME -----------------
@@ -161,7 +156,7 @@ if not df.empty:
     toplam_onay = onay_rsi + onay_trend
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Fiyat (TRY)", f"{fiyat:,.2f}")
+    c1.metric("Fiyat (USDT)", f"{fiyat:,.2f}")
     c2.metric("RSI (14)", f"{rsi:.2f}")
     c3.metric("Onay Skoru", f"{toplam_onay}/2")
     sinyal = "🚀 GÜÇLÜ AL" if toplam_onay == 2 else ("⚖️ NÖTR" if toplam_onay == 1 else "⚠️ BEKLE")
@@ -189,4 +184,4 @@ if not df.empty:
         st.plotly_chart(fig, use_container_width=True)
 
 else:
-    st.error("Veri çekilemedi. Binance TR bağlantısını kontrol edin.")
+    st.error("Veri çekilemedi. Binance Global bağlantısını kontrol edin.")

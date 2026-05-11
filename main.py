@@ -23,8 +23,16 @@ binance = Spot(
 
 TELEGRAM_TOKEN = st.secrets.get("TELEGRAM_TOKEN", "")
 CHAT_ID = st.secrets.get("CHAT_ID", "")
+def get_binance_tr_symbols():
+    try:
+        exchange_info = binance.exchange_info()
+        symbols = exchange_info["symbols"]
+        try_pairs = [s["symbol"] for s in symbols if s["symbol"].endswith("TRY")]
+        return sorted(try_pairs)
+    except:
+        return ["BTCTRY", "ETHTRY", "USDTTRY"]
 
-KRIPTO_LISTESI = ["BTCTRY", "ETHTRY", "SOLTRY", "AVAXTRY", "USDTTRY"]
+KRIPTO_LISTESI = get_binance_tr_symbols()
 BIST_LISTESI = ["THYAO.IS", "EREGL.IS", "ASELS.IS", "TUPRS.IS", "KCHOL.IS", "AKBNK.IS"]
 
 # ----------------- YARDIMCI FONKSİYONLAR -----------------

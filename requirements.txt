@@ -1,9 +1,7 @@
 streamlit
 pandas
 pandas_ta
-yfinance
 plotly
 requests
-python-binance
 openpyxl
-binance-connector
+python-binance

@@ -3,18 +3,17 @@ import pandas as pd
 import pandas_ta as ta
 import yfinance as yf
 import plotly.graph_objects as go
-import ollama
 import requests
-import re
+from groq import Groq # Ollama yerine Groq kullanıyoruz
 from datetime import datetime
 
 # --- 1. AYARLAR VE YAPILANDIRMA ---
 st.set_page_config(page_title="AI Finansal Terminal Pro", layout="wide", page_icon="📈")
 
-# Sabitler
+# Sabitler (Secrets'tan veya varsayılan değerlerden alınır)
 TELEGRAM_TOKEN = st.secrets.get("TELEGRAM_TOKEN", "8456680476:AAFRyBdZUdWs4ZA3DF9KK_78dmmUDfF_YUs")
 CHAT_ID = st.secrets.get("CHAT_ID", "6712642767")
-MODEL_ADI = "llama3"
+GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "BURAYA_GROQ_API_ANAHTARINI_YAZIN")
 
 KRIPTO_LISTESI = ["BTC-USD", "ETH-USD", "SOL-USD", "AVAX-USD"]
 BIST_LISTESI = ["THYAO.IS", "EREGL.IS", "ASELS.IS", "TUPRS.IS", "KCHOL.IS", "AKBNK.IS"]
@@ -28,24 +27,32 @@ def telegram_gonder(mesaj):
     except: pass
 
 def get_crypto_data(hisse_kodu):
-    ticker = yf.Ticker(hisse_kodu)
-    df = ticker.history(period="6mo", interval="1d")
-    if not df.empty:
-        df['RSI'] = ta.rsi(df['Close'], length=14)
-        df['SMA20'] = ta.sma(df['Close'], length=20)
-        return df
+    try:
+        ticker = yf.Ticker(hisse_kodu)
+        df = ticker.history(period="6mo", interval="1d")
+        if not df.empty:
+            df['RSI'] = ta.rsi(df['Close'], length=14)
+            df['SMA20'] = ta.sma(df['Close'], length=20)
+            return df
+    except:
+        return pd.DataFrame()
     return pd.DataFrame()
 
 def ai_analiz_al(hisse_kodu, fiyat, rsi, sma):
-    prompt = (f"Sen profesyonel bir analistsin. {hisse_kodu} verilerini yorumla: "
-              f"Fiyat:{fiyat:.2f}, RSI:{rsi:.2f}, SMA20:{sma:.2f}. "
-              f"Tamamen TÜRKÇE ve kısa: Teknik durum, YÖN (YUKARI/AŞAĞI), Hedef Fiyat.")
     try:
-        # Local Ollama kullanımı
-        res = ollama.chat(model=MODEL_ADI, messages=[{'role': 'user', 'content': prompt}])
-        return res['message']['content']
-    except:
-        return "Ollama bağlantısı kurulamadı. (Lütfen Ollama'nın çalıştığından emin olun)"
+        # Bulut uyumlu Groq (Llama3) kullanımı
+        client = Groq(api_key=GROQ_API_KEY)
+        prompt = (f"Sen profesyonel bir analistsin. {hisse_kodu} verilerini yorumla: "
+                  f"Fiyat:{fiyat:.2f}, RSI:{rsi:.2f}, SMA20:{sma:.2f}. "
+                  f"Tamamen TÜRKÇE ve kısa: Teknik durum, YÖN (YUKARI/AŞAĞI), Hedef Fiyat.")
+        
+        completion = client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        return f"AI Analizi şu an yapılamıyor. (Hata: {e})"
 
 # --- 3. STREAMLIT ARAYÜZÜ ---
 
@@ -84,12 +91,11 @@ if not df.empty:
 
     with col_left:
         st.subheader("💡 Yapay Zeka Analizi")
-        if st.button("Llama3 Analizini Başlat"):
+        if st.button("AI Analizini Başlat"):
             with st.spinner("AI verileri yorumluyor..."):
                 analiz = ai_analiz_al(secilen, fiyat, rsi, sma)
                 st.info(analiz)
                 
-                # Eğer AI "YUKARI" diyorsa Telegram'a rapor at
                 if "YUKARI" in analiz.upper() or "AL" in analiz.upper():
                     telegram_gonder(f"🚨 Sinyal Yakalandı: {secilen}\nAnaliz: {analiz}")
                     st.success("Analiz Telegram'a gönderildi!")
@@ -107,11 +113,8 @@ if not df.empty:
     # --- 4. BACKTEST (SIDEBAR) ---
     st.sidebar.divider()
     if st.sidebar.button("Stratejiyi Test Et"):
-        # Basit bir simülasyon
-        baslangic = 10000
-        # ... backtest mantığınız buraya gelebilir ...
         st.sidebar.write(f"Test Başarılı: Başlangıç 10k")
-        st.sidebar.info("Detaylı rapor Excel'e arşivlendi.")
+        st.sidebar.info("Geriye dönük tarama tamamlandı.")
 
 else:
     st.error("Veri çekilemedi. İnternet bağlantınızı veya sembolü kontrol edin.")

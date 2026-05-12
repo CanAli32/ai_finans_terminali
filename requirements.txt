@@ -4,4 +4,4 @@ pandas_ta
 plotly
 requests
 openpyxl
-python-binance
+okx

@@ -3,5 +3,3 @@ pandas
 pandas_ta
 plotly
 requests
-openpyxl
-okx

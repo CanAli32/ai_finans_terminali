@@ -4,58 +4,82 @@ import pandas_ta as ta
 import plotly.graph_objects as go
 import requests
 from datetime import datetime
-from binance.client import Client
 import sqlite3
 
+import okx.Market_api as Market
+import okx.Trade_api as Trade
+
 # ----------------- AYARLAR -----------------
-st.set_page_config(page_title="AI Finansal Terminal Pro", layout="wide", page_icon="📈")
+st.set_page_config(page_title="AI Finansal Terminal Pro (OKX)", layout="wide", page_icon="📈")
 
-api_key = st.secrets["BINANCE_API_KEY"]
-api_secret = st.secrets["BINANCE_API_SECRET"]
+OKX_API_KEY = st.secrets["OKX_API_KEY"]
+OKX_API_SECRET = st.secrets["OKX_API_SECRET"]
+OKX_PASSPHRASE = st.secrets["OKX_PASSPHRASE"]
 
-# Binance Global
-binance = Client(api_key, api_secret)
+# flag: "0" = demo, "1" = real
+FLAG = "1"
+
+market_api = Market.MarketAPI(
+    api_key=OKX_API_KEY,
+    api_secret_key=OKX_API_SECRET,
+    passphrase=OKX_PASSPHRASE,
+    flag=FLAG
+)
+
+trade_api = Trade.TradeAPI(
+    api_key=OKX_API_KEY,
+    api_secret_key=OKX_API_SECRET,
+    passphrase=OKX_PASSPHRASE,
+    flag=FLAG
+)
 
 TELEGRAM_TOKEN = st.secrets.get("TELEGRAM_TOKEN", "")
 CHAT_ID = st.secrets.get("CHAT_ID", "")
 
-# ----------------- KRİPTO LİSTESİ (GLOBAL USDT PARİTELERİ) -----------------
-def get_binance_global_usdt_symbols():
-    try:
-        info = binance.get_exchange_info()
-        symbols = info["symbols"]
-        usdt_pairs = [
-            s["symbol"] for s in symbols
-            if s["quoteAsset"] == "USDT" and s["status"] == "TRADING"
-        ]
-        return sorted(usdt_pairs)
-    except:
-        return ["BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "BNBUSDT"]
-
-KRIPTO_LISTESI = get_binance_global_usdt_symbols()
-BIST_LISTESI = ["THYAO.IS", "EREGL.IS", "ASELS.IS", "TUPRS.IS", "KCHOL.IS", "AKBNK.IS"]  # Şimdilik pasif
-
 # ----------------- TELEGRAM -----------------
 def telegram_gonder(mesaj: str):
+    if not TELEGRAM_TOKEN or not CHAT_ID:
+        return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
         requests.post(url, json={"chat_id": CHAT_ID, "text": mesaj})
     except:
         pass
 
-# ----------------- VERİ ÇEKME (BINANCE GLOBAL) -----------------
-def get_crypto_data(symbol):
+# ----------------- OKX SEMBOL LİSTESİ (SPOT USDT) -----------------
+def get_okx_usdt_symbols():
     try:
-        klines = binance.get_klines(symbol=symbol, interval=Client.KLINE_INTERVAL_1DAY, limit=180)
+        res = market_api.get_tickers(instType="SPOT")
+        data = res.get("data", [])
+        usdt_pairs = [
+            d["instId"] for d in data
+            if d.get("quoteCcy") == "USDT" and d.get("state") == "live"
+        ]
+        return sorted(usdt_pairs)
+    except Exception as e:
+        st.warning(f"Sembol listesi alınamadı, varsayılan liste kullanılıyor. Hata: {e}")
+        return ["BTC-USDT", "ETH-USDT", "SOL-USDT", "AVAX-USDT"]
 
-        df = pd.DataFrame(klines, columns=[
-            "time", "open", "high", "low", "close", "volume",
-            "close_time", "quote_asset_volume", "number_of_trades",
-            "taker_buy_base", "taker_buy_quote", "ignore"
+KRIPTO_LISTESI = get_okx_usdt_symbols()
+
+# ----------------- VERİ ÇEKME (OKX CANDLE) -----------------
+def get_crypto_data(inst_id: str) -> pd.DataFrame:
+    try:
+        # bar: 1D = günlük
+        res = market_api.get_candlesticks(instId=inst_id, bar="1D", limit="180")
+        data = res.get("data", [])
+        if not data:
+            return pd.DataFrame()
+
+        # OKX candlesticks: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
+        df = pd.DataFrame(data, columns=[
+            "ts", "open", "high", "low", "close", "vol", "volCcy", "volCcyQuote", "confirm"
         ])
 
-        df["time"] = pd.to_datetime(df["time"], unit="ms")
+        df["time"] = pd.to_datetime(df["ts"].astype("int64"), unit="ms")
         df["Close"] = df["close"].astype(float)
+
+        df = df.sort_values("time")  # eski → yeni
 
         df["RSI"] = ta.rsi(df["Close"], length=14)
         df["SMA20"] = ta.sma(df["Close"], length=20)
@@ -63,32 +87,49 @@ def get_crypto_data(symbol):
         return df
 
     except Exception as e:
-        st.error(f"Veri çekme hatası: {e}")
+        st.error(f"Veri çekme hatası (OKX): {e}")
         return pd.DataFrame()
 
-# ----------------- AI ANALİZ -----------------
+# ----------------- AI ANALİZ (PLACEHOLDER) -----------------
 def ai_analiz_al(hisse_kodu, fiyat, rsi, sma):
-    return "Cloud ortamında Ollama desteklenmediği için AI analizi devre dışı."
+    return "Cloud ortamında harici LLM kullanımı kapalı olduğu için AI analizi devre dışı."
 
-# ----------------- AL / SAT (GLOBAL) -----------------
-def binance_al(symbol, usdt_miktar):
+# ----------------- AL / SAT (OKX SPOT) -----------------
+def okx_al(inst_id: str, usdt_miktar: float):
+    """
+    OKX spot market buy:
+    - tdMode: 'cash' (spot)
+    - side: 'buy'
+    - ordType: 'market'
+    - sz: alınacak miktar (base ccy) veya
+    - notional: USDT tutarı (bazı hesaplarda desteklenir)
+    Burada basit yaklaşım: önce son fiyatı çekip yaklaşık miktar hesaplıyoruz.
+    """
     try:
-        fiyat = float(binance.get_symbol_ticker(symbol=symbol)["price"])
-        adet = round(usdt_miktar / fiyat, 6)
+        # Son fiyat
+        ticker = market_api.get_ticker(instId=inst_id)
+        last = float(ticker["data"][0]["last"])
+        qty = round(usdt_miktar / last, 6)
 
-        order = binance.order_market_buy(
-            symbol=symbol,
-            quoteOrderQty=usdt_miktar
+        order = trade_api.place_order(
+            instId=inst_id,
+            tdMode="cash",
+            side="buy",
+            ordType="market",
+            sz=str(qty)
         )
-        return fiyat, adet, order
+        return last, qty, order
     except Exception as e:
         return None, None, str(e)
 
-def binance_sat(symbol, adet):
+def okx_sat(inst_id: str, qty: float):
     try:
-        order = binance.order_market_sell(
-            symbol=symbol,
-            quantity=adet
+        order = trade_api.place_order(
+            instId=inst_id,
+            tdMode="cash",
+            side="sell",
+            ordType="market",
+            sz=str(qty)
         )
         return order
     except Exception as e:
@@ -108,8 +149,10 @@ def kaydet_sqlite(tarih, varlik, fiyat, rsi, onay, analiz):
             AI_Analizi TEXT
         )
     """)
-    cursor.execute("INSERT INTO islemler VALUES (?, ?, ?, ?, ?, ?)",
-                   (tarih, varlik, fiyat, rsi, onay, analiz))
+    cursor.execute(
+        "INSERT INTO islemler VALUES (?, ?, ?, ?, ?, ?)",
+        (tarih, varlik, fiyat, rsi, onay, analiz)
+    )
     conn.commit()
     conn.close()
 
@@ -137,10 +180,10 @@ yuzde_kar = st.sidebar.number_input("Satış Kar Yüzdesi (%)", 1, 50, 5)
 yuzde_zarar = st.sidebar.number_input("Zarar Kes (%)", 1, 50, 3)
 miktar = st.sidebar.number_input("Alım Miktarı (USDT)", 10, 100000, 50)
 
-st.sidebar.title("🤖 AI Robot Kontrol")
-kategori = st.sidebar.radio("Varlık Türü:", ["Kripto"])  # BIST şimdilik devre dışı
+st.sidebar.title("🤖 Robot Kontrol")
+kategori = st.sidebar.radio("Varlık Türü:", ["Kripto"])
 liste = KRIPTO_LISTESI
-secilen = st.sidebar.selectbox("Varlık Seç:", liste)
+secilen = st.sidebar.selectbox("Varlık Seç (OKX Spot USDT):", liste)
 
 # ----------------- VERİ ÇEKME -----------------
 df = get_crypto_data(secilen)
@@ -156,7 +199,7 @@ if not df.empty:
     toplam_onay = onay_rsi + onay_trend
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Fiyat (USDT)", f"{fiyat:,.2f}")
+    c1.metric("Fiyat (USDT)", f"{fiyat:,.4f}")
     c2.metric("RSI (14)", f"{rsi:.2f}")
     c3.metric("Onay Skoru", f"{toplam_onay}/2")
     sinyal = "🚀 GÜÇLÜ AL" if toplam_onay == 2 else ("⚖️ NÖTR" if toplam_onay == 1 else "⚠️ BEKLE")
@@ -176,12 +219,21 @@ if not df.empty:
             kaydet_excel(tarih, secilen, fiyat, rsi, toplam_onay, analiz)
             kaydet_sqlite(tarih, secilen, fiyat, rsi, toplam_onay, analiz)
 
+        st.subheader("🟢 Manuel İşlem")
+        if st.button("Piyasa Fiyatından AL"):
+            f, qty, sonuc = okx_al(secilen, miktar)
+            if f is None:
+                st.error(f"AL emri hatası: {sonuc}")
+            else:
+                st.success(f"{secilen} için ~{qty} adet ALINDI @ {f:.4f} USDT")
+                telegram_gonder(f"AL EMRİ: {secilen} ~{qty} adet @ {f:.4f} USDT")
+
     with col_right:
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=df["time"], y=df["Close"], name="Fiyat"))
         fig.add_trace(go.Scatter(x=df["time"], y=df["SMA20"], name="SMA20"))
-        fig.update_layout(template="plotly_dark", height=450, title=f"{secilen} Canlı Grafik")
+        fig.update_layout(template="plotly_dark", height=450, title=f"{secilen} Canlı Grafik (OKX)")
         st.plotly_chart(fig, use_container_width=True)
 
 else:
-    st.error("Veri çekilemedi. Binance Global bağlantısını kontrol edin.")
+    st.error("Veri çekilemedi. OKX bağlantısını veya sembolü kontrol edin.")

@@ -76,11 +76,13 @@ def headers(method, path, body=""):
 def get_candles(inst_id="BTC-USDT"):
     path = f"/api/v5/market/candles?instId={inst_id}&bar=1D&limit=180"
     
-    # Mum verileri için demo ve canlı ayrımı header simülasyonu ile yapılır
+    # Demo modunda grafik verilerini de yetkilendirilmiş header ile çekiyoruz
     h = headers("GET", path) if IS_DEMO else {}
     r = requests.get(BASE_URL + path, headers=h)
     
-    data = r.json().get("data", [])
+    # API yanıtını güvenli şekilde parse etme
+    res_json = r.json()
+    data = res_json.get("data", [])
 
     if not data:
         return pd.DataFrame()
@@ -98,12 +100,18 @@ def get_candles(inst_id="BTC-USDT"):
 
     return df
 
-# ----------------- OKX MARKET BUY -----------------
+# ----------------- OKX MARKET SELL -----------------
 def okx_buy(inst_id, usdt_amount):
-    # Son fiyatı çek
+    # HATA ÇÖZÜMÜ: Fiyat çekerken de Demo/Canlı header bilgisini gönderiyoruz
     h_m = headers("GET", f"/api/v5/market/ticker?instId={inst_id}")
-    ticker = requests.get(BASE_URL + f"/api/v5/market/ticker?instId={inst_id}", headers=h_m).json()
-    last = float(ticker["data"][0]["last"])
+    ticker_res = requests.get(BASE_URL + f"/api/v5/market/ticker?instId={inst_id}", headers=h_m).json()
+    
+    # OKX API veri yapısı kontrolü
+    if "data" in ticker_res and len(ticker_res["data"]) > 0:
+        last = float(ticker_res["data"][0]["last"])
+    else:
+        return 0, 0, {"error": "Fiyat verisi alınamadı", "details": ticker_res}
+        
     qty = round(usdt_amount / last, 6)
 
     body = json.dumps({
@@ -120,7 +128,6 @@ def okx_buy(inst_id, usdt_amount):
 
     return last, qty, r.json()
 
-# ----------------- OKX MARKET SELL -----------------
 def okx_sell(inst_id, qty):
     body = json.dumps({
         "instId": inst_id,

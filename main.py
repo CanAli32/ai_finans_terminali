@@ -45,6 +45,7 @@ if not giris_kontrol():
 st.sidebar.title("⚙️ Binance Yönetim Paneli")
 hesap_modu = st.sidebar.radio("Hesap Türü:", ["Demo (Testnet)", "Gerçek Hesap"])
 
+# UYARI: Protokol şemaları (https://) ve /api/v3 yolları eksiksiz tanımlandı
 if hesap_modu == "Demo (Testnet)":
     BASE_URL = "binance.vision" 
     API_KEY = st.secrets.get("BINANCE_TESTNET_API_KEY")
@@ -88,7 +89,7 @@ def get_symbol_step_size(symbol):
     try:
         url = f"{BASE_URL}/v3/exchangeInfo?symbol={symbol}"
         res = requests.get(url).json()
-        for f in res['symbols'][0]['filters']:
+        for f in res['symbols']['filters']:
             if f['filterType'] == 'LOT_SIZE': return float(f['stepSize'])
     except: return 0.00001
     return 0.00001

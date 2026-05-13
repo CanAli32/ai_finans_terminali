@@ -48,10 +48,19 @@ def generate_signature(query_string):
     return hmac.new(API_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
 
 def get_current_price(symbol):
+    headers = {
+        "X-MBX-APIKEY": API_KEY,
+        "User-Agent": "Mozilla/5.0"
+    }
     try:
-        r = requests.get(f"{BASE_URL}/api/v3/ticker/price", params={"symbol": symbol}, timeout=5)
+        r = requests.get(f"{BASE_URL}/api/v3/ticker/price", 
+                         params={"symbol": symbol}, 
+                         headers=headers,
+                         timeout=5)
         return float(r.json()["price"])
-    except: return 0.0
+    except:
+        return 0.0
+
 
 def get_account_balances():
     timestamp = int(time.time() * 1000)

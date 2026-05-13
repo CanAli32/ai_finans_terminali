@@ -1,5 +1,7 @@
-streamlit
-pandas
-pandas_ta
-plotly
-requests
+streamlit>=1.35.0
+pandas>=2.0.0
+numpy<2.0.0
+scipy>=1.10.0
+pandas-ta>=0.3.14b0
+plotly>=5.15.0
+requests>=2.31.0

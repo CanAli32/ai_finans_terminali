@@ -3,20 +3,48 @@ import pandas as pd
 import pandas_ta as ta
 import plotly.graph_objects as go
 import requests
-import time
 import hmac
 import base64
 import json
 from datetime import datetime
 
-# ----------------- STREAMLIT AYAR -----------------
-st.set_page_config(page_title="OKX Spot Bot", layout="wide", page_icon="📈")
+# ----------------- STREAMLIT AYARLARI -----------------
+st.set_page_config(page_title="OKX Spot Bot Pro", layout="wide", page_icon="📈")
 
+# ----------------- GÜVENLİK KİLİDİ -----------------
+def giris_kontrol():
+    if "giris_basarili" not in st.session_state:
+        st.title("🔒 Robot Erişim Kilidi")
+        sifre = st.text_input("Erişim Şifresini Giriniz:", type="password")
+        if st.button("Giriş Yap"):
+            if sifre == "123456": # Şifrenizi buradan değiştirebilirsiniz
+                st.session_state.giris_basarili = True
+                st.rerun()
+            else:
+                st.error("Hatalı Şifre!")
+        return False
+    return True
+
+if not giris_kontrol():
+    st.stop()
+
+# ----------------- HESAP MODU VE BULUT AYARLARI -----------------
+st.sidebar.title("⚙️ OKX Yönetim Paneli")
+
+# HATA ÇÖZÜMÜ: Buradan Canlı veya Demo seçimi yapabilirsiniz
+hesap_modu = st.sidebar.radio("Hesap Türü:", ["Demo (Testnet)", "Gerçek Hesap"])
+
+if hesap_modu == "Demo (Testnet)":
+    BASE_URL = "https://www.okx.com" # Demo için de ana url kullanılır ancak header değişir
+    IS_DEMO = True
+else:
+    BASE_URL = "https://www.okx.com"
+    IS_DEMO = False
+
+# API Bilgilerini Çekme
 API_KEY = st.secrets["OKX_API_KEY"]
 API_SECRET = st.secrets["OKX_API_SECRET"]
 PASSPHRASE = st.secrets["OKX_PASSPHRASE"]
-
-BASE_URL = "https://www.okx.com"
 
 # ----------------- OKX İMZA OLUŞTURMA -----------------
 def sign(message, secret):
@@ -25,22 +53,33 @@ def sign(message, secret):
     ).decode()
 
 def headers(method, path, body=""):
+    # OKX milisaniye hassasiyetinde UTC zamanı bekler
     ts = datetime.utcnow().isoformat("T", "milliseconds") + "Z"
     msg = ts + method + path + body
     signature = sign(msg, API_SECRET)
 
-    return {
+    head = {
         "OK-ACCESS-KEY": API_KEY,
         "OK-ACCESS-SIGN": signature,
         "OK-ACCESS-TIMESTAMP": ts,
         "OK-ACCESS-PASSPHRASE": PASSPHRASE,
         "Content-Type": "application/json"
     }
+    
+    # HATA ÇÖZÜMÜ: Eğer Demo modu seçildiyse OKX simulated header'ını ekliyoruz
+    if IS_DEMO:
+        head["x-simulated-id"] = "1"
+        
+    return head
 
 # ----------------- OKX VERİ ÇEKME -----------------
 def get_candles(inst_id="BTC-USDT"):
     path = f"/api/v5/market/candles?instId={inst_id}&bar=1D&limit=180"
-    r = requests.get(BASE_URL + path)
+    
+    # Mum verileri için demo ve canlı ayrımı header simülasyonu ile yapılır
+    h = headers("GET", path) if IS_DEMO else {}
+    r = requests.get(BASE_URL + path, headers=h)
+    
     data = r.json().get("data", [])
 
     if not data:
@@ -61,8 +100,9 @@ def get_candles(inst_id="BTC-USDT"):
 
 # ----------------- OKX MARKET BUY -----------------
 def okx_buy(inst_id, usdt_amount):
-    # Önce fiyat çek
-    ticker = requests.get(BASE_URL + f"/api/v5/market/ticker?instId={inst_id}").json()
+    # Son fiyatı çek
+    h_m = headers("GET", f"/api/v5/market/ticker?instId={inst_id}")
+    ticker = requests.get(BASE_URL + f"/api/v5/market/ticker?instId={inst_id}", headers=h_m).json()
     last = float(ticker["data"][0]["last"])
     qty = round(usdt_amount / last, 6)
 
@@ -96,40 +136,55 @@ def okx_sell(inst_id, qty):
 
     return r.json()
 
-# ----------------- ARAYÜZ -----------------
-st.sidebar.title("⚙️ OKX Spot Bot")
-inst_id = st.sidebar.selectbox("Sembol", ["BTC-USDT", "ETH-USDT", "SOL-USDT", "AVAX-USDT"])
-usdt_amount = st.sidebar.number_input("Alım Miktarı (USDT)", 10, 100000, 50)
+# ----------------- DYNAMIC ARAYÜZ PANELDEN -----------------
+inst_id = st.sidebar.selectbox("Sembol Seçimi", ["BTC-USDT", "ETH-USDT", "SOL-USDT", "AVAX-USDT"])
+usdt_amount = st.sidebar.number_input("Alım Tutarı (USDT)", 10, 100000, 50)
 
 df = get_candles(inst_id)
 
 if df.empty:
-    st.error("Veri çekilemedi.")
+    st.error("Piyasa verileri alınamadı. API Key veya sunucu bağlantısını kontrol edin.")
 else:
     last = df.iloc[-1]
     fiyat = last["Close"]
-    rsi = last["RSI"]
-    sma = last["SMA20"]
+    rsi = last["RSI"] if not pd.isna(last["RSI"]) else 50.0
+    sma = last["SMA20"] if not pd.isna(last["SMA20"]) else fiyat
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Fiyat", f"{fiyat:.4f} USDT")
-    c2.metric("RSI", f"{rsi:.2f}")
-    c3.metric("SMA20", f"{sma:.2f}")
+    # Üst Gösterge Kartları
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Anlık Fiyat", f"{fiyat:,.4f} USDT")
+    c2.metric("RSI (14)", f"{rsi:.2f}")
+    c3.metric("SMA (20)", f"{sma:,.2f}")
+    
+    onay = (1 if rsi < 35 else 0) + (1 if fiyat > sma else 0)
+    c4.metric("Sinyal Skoru", f"{onay}/2", delta="AL SİNYALİ" if onay == 2 else "BEKLE")
 
+    # Teknik Grafik
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df["time"], y=df["Close"], name="Fiyat"))
-    fig.add_trace(go.Scatter(x=df["time"], y=df["SMA20"], name="SMA20"))
-    fig.update_layout(template="plotly_dark", height=450)
+    fig.add_trace(go.Scatter(x=df["time"], y=df["Close"], name="Fiyat", line=dict(color='#00ffcc')))
+    fig.add_trace(go.Scatter(x=df["time"], y=df["SMA20"], name="SMA20", line=dict(color='orange', dash='dash')))
+    fig.update_layout(template="plotly_dark", height=400, margin=dict(l=20, r=20, t=20, b=20))
     st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("🟢 İşlem")
-    if st.button("Piyasa Fiyatından AL"):
-        f, qty, res = okx_buy(inst_id, usdt_amount)
-        st.success(f"{inst_id} için {qty} adet ALINDI @ {f:.4f}")
-        st.json(res)
+    # Emir Gönderme Alanı
+    st.markdown(f"### 🤖 Emir Yönetimi ({hesap_modu})")
+    col_buy, col_sell = st.columns(2)
 
-    if st.button("Piyasa Fiyatından SAT"):
-        qty = st.number_input("Satılacak Adet", 0.0001, 9999.0, 0.01)
-        res = okx_sell(inst_id, qty)
-        st.success(f"{inst_id} için {qty} adet SATILDI")
-        st.json(res)
+    with col_buy:
+        st.subheader("🟢 Alım Yap")
+        if st.button(f"{inst_id} Satın Al ({usdt_amount} USDT)"):
+            with st.spinner("Emir iletiliyor..."):
+                f, qty, res = okx_buy(inst_id, usdt_amount)
+                if "code" in res and res["code"] == "0":
+                    st.success(f"Başarılı! {qty} adet {inst_id} alındı. Fiyat: {f}")
+                st.json(res)
+
+    with col_sell:
+        st.subheader("🔴 Satım Yap")
+        satilacak_adet = st.number_input("Satılacak Miktar (Adet)", 0.0001, 10000.0, 0.01, step=0.01, key="sell_qty_input")
+        if st.button(f"{inst_id} Market Fiyatından SAT"):
+            with st.spinner("Emir iletiliyor..."):
+                res = okx_sell(inst_id, satilacak_adet)
+                if "code" in res and res["code"] == "0":
+                    st.success(f"Başarılı! {satilacak_adet} adet {inst_id} satıldı.")
+                st.json(res)

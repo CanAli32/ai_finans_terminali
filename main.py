@@ -36,7 +36,7 @@ if not giris_kontrol():
 
 # ----------------- TESTNET YAPILANDIRMASI -----------------
 # Sadece Testnet URL'leri tanımlandı
-BASE_URL = "https://testnet.binance.vision"
+BASE_URL = "https://demo-fapi.binance.com/"
 API_KEY = st.secrets.get("BINANCE_TESTNET_API_KEY", "")
 API_SECRET = st.secrets.get("BINANCE_TESTNET_API_SECRET", "")
 

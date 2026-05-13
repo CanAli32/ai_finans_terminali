@@ -46,11 +46,11 @@ st.sidebar.title("⚙️ Binance Yönetim Paneli")
 hesap_modu = st.sidebar.radio("Hesap Türü:", ["Demo (Testnet)", "Gerçek Hesap"])
 
 if hesap_modu == "Demo (Testnet)":
-    BASE_URL = "binance.vision"
+    BASE_URL = "https://binance.vision"
     API_KEY = st.secrets.get("BINANCE_TESTNET_API_KEY")
     API_SECRET = st.secrets.get("BINANCE_TESTNET_API_SECRET")
 else:
-    BASE_URL = "binance.com"
+    BASE_URL = "https://binance.com"
     API_KEY = st.secrets.get("BINANCE_API_KEY")
     API_SECRET = st.secrets.get("BINANCE_API_SECRET")
 

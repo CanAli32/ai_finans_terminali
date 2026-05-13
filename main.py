@@ -6,7 +6,7 @@ import requests
 import hmac
 import base64
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 # ----------------- STREAMLIT AYARLARI -----------------
 st.set_page_config(page_title="OKX Spot Bot Pro", layout="wide", page_icon="📈")
@@ -17,7 +17,7 @@ def giris_kontrol():
         st.title("🔒 Robot Erişim Kilidi")
         sifre = st.text_input("Erişim Şifresini Giriniz:", type="password")
         if st.button("Giriş Yap"):
-            if sifre == "123456": # Şifrenizi buradan değiştirebilirsiniz
+            if sifre == "123456": 
                 st.session_state.giris_basarili = True
                 st.rerun()
             else:
@@ -31,20 +31,21 @@ if not giris_kontrol():
 # ----------------- HESAP MODU VE BULUT AYARLARI -----------------
 st.sidebar.title("⚙️ OKX Yönetim Paneli")
 
-# HATA ÇÖZÜMÜ: Buradan Canlı veya Demo seçimi yapabilirsiniz
 hesap_modu = st.sidebar.radio("Hesap Türü:", ["Demo (Testnet)", "Gerçek Hesap"])
 
 if hesap_modu == "Demo (Testnet)":
-    BASE_URL = "https://www.okx.com" # Demo için de ana url kullanılır ancak header değişir
+    BASE_URL = "https://www.okx.com"
     IS_DEMO = True
+    # UYARI: Secrets dosyanızda demo anahtarlarınızın tanımlı olduğundan emin olun!
+    API_KEY = st.secrets.get("OKX_DEMO_API_KEY", st.secrets.get("OKX_API_KEY"))
+    API_SECRET = st.secrets.get("OKX_DEMO_API_SECRET", st.secrets.get("OKX_API_SECRET"))
+    PASSPHRASE = st.secrets.get("OKX_DEMO_PASSPHRASE", st.secrets.get("OKX_PASSPHRASE"))
 else:
     BASE_URL = "https://www.okx.com"
     IS_DEMO = False
-
-# API Bilgilerini Çekme
-API_KEY = st.secrets["OKX_API_KEY"]
-API_SECRET = st.secrets["OKX_API_SECRET"]
-PASSPHRASE = st.secrets["OKX_PASSPHRASE"]
+    API_KEY = st.secrets["OKX_API_KEY"]
+    API_SECRET = st.secrets["OKX_API_SECRET"]
+    PASSPHRASE = st.secrets["OKX_PASSPHRASE"]
 
 # ----------------- OKX İMZA OLUŞTURMA -----------------
 def sign(message, secret):
@@ -53,8 +54,8 @@ def sign(message, secret):
     ).decode()
 
 def headers(method, path, body=""):
-    # OKX milisaniye hassasiyetinde UTC zamanı bekler
-    ts = datetime.utcnow().isoformat("T", "milliseconds") + "Z"
+    # DÜZELTME: Zaman damgası ISO 8601 UTC formatına zorlandı
+    ts = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
     msg = ts + method + path + body
     signature = sign(msg, API_SECRET)
 
@@ -66,7 +67,6 @@ def headers(method, path, body=""):
         "Content-Type": "application/json"
     }
     
-    # HATA ÇÖZÜMÜ: Eğer Demo modu seçildiyse OKX simulated header'ını ekliyoruz
     if IS_DEMO:
         head["x-simulated-id"] = "1"
         
@@ -76,11 +76,9 @@ def headers(method, path, body=""):
 def get_candles(inst_id="BTC-USDT"):
     path = f"/api/v5/market/candles?instId={inst_id}&bar=1D&limit=180"
     
-    # Demo modunda grafik verilerini de yetkilendirilmiş header ile çekiyoruz
     h = headers("GET", path) if IS_DEMO else {}
     r = requests.get(BASE_URL + path, headers=h)
     
-    # API yanıtını güvenli şekilde parse etme
     res_json = r.json()
     data = res_json.get("data", [])
 
@@ -100,13 +98,12 @@ def get_candles(inst_id="BTC-USDT"):
 
     return df
 
-# ----------------- OKX MARKET SELL -----------------
+# ----------------- OKX MARKET BUY -----------------
 def okx_buy(inst_id, usdt_amount):
-    # HATA ÇÖZÜMÜ: Fiyat çekerken de Demo/Canlı header bilgisini gönderiyoruz
-    h_m = headers("GET", f"/api/v5/market/ticker?instId={inst_id}")
-    ticker_res = requests.get(BASE_URL + f"/api/v5/market/ticker?instId={inst_id}", headers=h_m).json()
+    path_ticker = f"/api/v5/market/ticker?instId={inst_id}"
+    h_m = headers("GET", path_ticker) if IS_DEMO else {}
+    ticker_res = requests.get(BASE_URL + path_ticker, headers=h_m).json()
     
-    # OKX API veri yapısı kontrolü
     if "data" in ticker_res and len(ticker_res["data"]) > 0:
         last = float(ticker_res["data"][0]["last"])
     else:
@@ -122,12 +119,13 @@ def okx_buy(inst_id, usdt_amount):
         "sz": str(qty)
     })
 
-    path = "/api/v5/trade/order"
-    h = headers("POST", path, body)
-    r = requests.post(BASE_URL + path, headers=h, data=body)
+    path_trade = "/api/v5/trade/order"
+    h = headers("POST", path_trade, body)
+    r = requests.post(BASE_URL + path_trade, headers=h, data=body)
 
     return last, qty, r.json()
 
+# ----------------- OKX MARKET SELL -----------------
 def okx_sell(inst_id, qty):
     body = json.dumps({
         "instId": inst_id,
@@ -150,14 +148,13 @@ usdt_amount = st.sidebar.number_input("Alım Tutarı (USDT)", 10, 100000, 50)
 df = get_candles(inst_id)
 
 if df.empty:
-    st.error("Piyasa verileri alınamadı. API Key veya sunucu bağlantısını kontrol edin.")
+    st.error("Piyasa verileri alınamadı. API Key veya ortam seçimini (Demo/Gerçek) kontrol edin.")
 else:
     last = df.iloc[-1]
     fiyat = last["Close"]
     rsi = last["RSI"] if not pd.isna(last["RSI"]) else 50.0
     sma = last["SMA20"] if not pd.isna(last["SMA20"]) else fiyat
 
-    # Üst Gösterge Kartları
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Anlık Fiyat", f"{fiyat:,.4f} USDT")
     c2.metric("RSI (14)", f"{rsi:.2f}")
@@ -166,14 +163,12 @@ else:
     onay = (1 if rsi < 35 else 0) + (1 if fiyat > sma else 0)
     c4.metric("Sinyal Skoru", f"{onay}/2", delta="AL SİNYALİ" if onay == 2 else "BEKLE")
 
-    # Teknik Grafik
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df["time"], y=df["Close"], name="Fiyat", line=dict(color='#00ffcc')))
     fig.add_trace(go.Scatter(x=df["time"], y=df["SMA20"], name="SMA20", line=dict(color='orange', dash='dash')))
     fig.update_layout(template="plotly_dark", height=400, margin=dict(l=20, r=20, t=20, b=20))
     st.plotly_chart(fig, use_container_width=True)
 
-    # Emir Gönderme Alanı
     st.markdown(f"### 🤖 Emir Yönetimi ({hesap_modu})")
     col_buy, col_sell = st.columns(2)
 

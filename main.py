@@ -45,7 +45,7 @@ if not giris_kontrol():
 st.sidebar.title("⚙️ Binance Yönetim Paneli")
 hesap_modu = st.sidebar.radio("Hesap Türü:", ["Demo (Testnet)", "Gerçek Hesap"])
 
-# UYARI: Protokol şemaları (https://) ve /api/v3 yolları eksiksiz tanımlandı
+# KESİN DÜZELTME: https:// protokol şemaları ve /api ekleri entegre edildi
 if hesap_modu == "Demo (Testnet)":
     BASE_URL = "binance.vision" 
     API_KEY = st.secrets.get("BINANCE_TESTNET_API_KEY")

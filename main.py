@@ -63,7 +63,7 @@ def get_candles(inst_id="BTC-USDT"):
 def okx_buy(inst_id, usdt_amount):
     # Önce fiyat çek
     ticker = requests.get(BASE_URL + f"/api/v5/market/ticker?instId={inst_id}").json()
-    last = float(ticker["data"][1]["last"])
+    last = float(ticker["data"][0]["last"])
     qty = round(usdt_amount / last, 6)
 
     body = json.dumps({

@@ -46,23 +46,21 @@ st.sidebar.title("⚙️ Binance Yönetim Paneli")
 hesap_modu = st.sidebar.radio("Hesap Türü:", ["Demo (Testnet)", "Gerçek Hesap"])
 
 if hesap_modu == "Demo (Testnet)":
-    BASE_URL = "https://binance.vision"
+    BASE_URL = "binance.vision" 
     API_KEY = st.secrets.get("BINANCE_TESTNET_API_KEY")
     API_SECRET = st.secrets.get("BINANCE_TESTNET_API_SECRET")
 else:
-    BASE_URL = "https://binance.com"
+    BASE_URL = "binance.com" 
     API_KEY = st.secrets.get("BINANCE_API_KEY")
     API_SECRET = st.secrets.get("BINANCE_API_SECRET")
 
-# Telegram Kimlik Bilgileri (.secrets.toml dosyasından alınır)
 TELEGRAM_BOT_TOKEN = st.secrets.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID", "")
 
 # ----------------- TELEGRAM BİLDİRİM FONKSİYONU -----------------
 def send_telegram_message(message):
-    """Belirtilen Telegram kanalına veya sohbetine anlık bildirim gönderir"""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return  # Bilgiler eksikse işlemi atla
+        return
     try:
         url = f"telegram.org{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {
@@ -88,16 +86,16 @@ def round_step_size(quantity, step_size):
 
 def get_symbol_step_size(symbol):
     try:
-        url = f"{BASE_URL}/api/v3/exchangeInfo?symbol={symbol}"
+        url = f"{BASE_URL}/v3/exchangeInfo?symbol={symbol}"
         res = requests.get(url).json()
-        for f in res['symbols']['filters']:
+        for f in res['symbols'][0]['filters']:
             if f['filterType'] == 'LOT_SIZE': return float(f['stepSize'])
     except: return 0.00001
     return 0.00001
 
 def get_current_price(symbol):
     try:
-        r = requests.get(f"{BASE_URL}/api/v3/ticker/price?symbol={symbol}").json()
+        r = requests.get(f"{BASE_URL}/v3/ticker/price?symbol={symbol}").json()
         return float(r["price"])
     except: return 0.0
 
@@ -105,7 +103,7 @@ def get_current_price(symbol):
 def get_account_balances():
     timestamp = int(time.time() * 1000)
     query = f"timestamp={timestamp}"
-    url = f"{BASE_URL}/api/v3/account?{query}&signature={generate_signature(query, API_SECRET)}"
+    url = f"{BASE_URL}/v3/account?{query}&signature={generate_signature(query, API_SECRET)}"
     r = requests.get(url, headers=get_binance_headers())
     if r.status_code == 200:
         df_bal = pd.DataFrame(r.json().get("balances", []))
@@ -121,7 +119,7 @@ def binance_buy(symbol, usdt_amount):
     qty = round_step_size(usdt_amount / last, get_symbol_step_size(symbol))
     timestamp = int(time.time() * 1000)
     query = f"symbol={symbol}&side=BUY&type=MARKET&quantity={qty}&timestamp={timestamp}"
-    url = f"{BASE_URL}/api/v3/order?{query}&signature={generate_signature(query, API_SECRET)}"
+    url = f"{BASE_URL}/v3/order?{query}&signature={generate_signature(query, API_SECRET)}"
     res = requests.post(url, headers=get_binance_headers()).json()
     
     if "orderId" in res:
@@ -132,7 +130,7 @@ def binance_sell(symbol, qty, is_trailing=False):
     qty = round_step_size(qty, get_symbol_step_size(symbol))
     timestamp = int(time.time() * 1000)
     query = f"symbol={symbol}&side=SELL&type=MARKET&quantity={qty}&timestamp={timestamp}"
-    url = f"{BASE_URL}/api/v3/order?{query}&signature={generate_signature(query, API_SECRET)}"
+    url = f"{BASE_URL}/v3/order?{query}&signature={generate_signature(query, API_SECRET)}"
     res = requests.post(url, headers=get_binance_headers()).json()
     
     if "orderId" in res:
@@ -141,7 +139,7 @@ def binance_sell(symbol, qty, is_trailing=False):
     return res
 
 def get_candles(symbol="BTCUSDT"):
-    r = requests.get(f"{BASE_URL}/api/v3/klines?symbol={symbol}&interval=1d&limit=180").json()
+    r = requests.get(f"{BASE_URL}/v3/klines?symbol={symbol}&interval=1d&limit=180").json()
     if isinstance(r, dict) or not r: return pd.DataFrame()
     df = pd.DataFrame(r, columns=["open_time","open","high","low","close","volume","close_time","qav","num_trades","tbb","tbq","ignore"])
     df["time"] = pd.to_datetime(df["open_time"].astype("int64"), unit="ms")
@@ -161,11 +159,11 @@ if st.sidebar.button("Bakiyeleri Güncelle"): st.cache_data.clear()
 with st.sidebar:
     df_balances = get_account_balances()
     if not df_balances.empty: st.dataframe(df_balances[["asset", "free", "locked"]], hide_index=True)
-    else: st.caption("Bakiye yüklenemedi.")
+    else: st.caption("Bakiye yüklenemedi veya anahtarlar eksik.")
 
 df = get_candles(symbol)
 if df.empty:
-    st.error("Piyasa verileri alınamadı.")
+    st.error("Piyasa verileri alınamadı. API Bağlantısını kontrol edin.")
 else:
     last_row = df.iloc[-1]
     fiyat = last_row["Close"]
@@ -218,7 +216,6 @@ else:
 
         anlik_fiyat = get_current_price(symbol)
         
-        # Fiyat Alarmı Bildirimi
         if abs(anlik_fiyat - alarm_fiyat) / alarm_fiyat < 0.002:
             st.toast(f"🚨 ALARM: {symbol} Hedef Fiyata Ulaştı: {anlik_fiyat}!", icon="⏰")
             send_telegram_message(f"⏰ *FİYAT ALARMI TETİKLENDİ*\nSembol: {symbol}\nFiyat: {anlik_fiyat} USDT")

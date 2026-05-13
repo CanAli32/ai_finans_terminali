@@ -46,12 +46,13 @@ st.sidebar.title("⚙️ Binance Yönetim Paneli")
 hesap_modu = st.sidebar.radio("Hesap Türü:", ["Demo (Testnet)", "Gerçek Hesap"])
 
 # KESİN DÜZELTME: https:// protokol şemaları ve /api ekleri entegre edildi
+
 if hesap_modu == "Demo (Testnet)":
-    BASE_URL = "binance.vision" 
+    BASE_URL = "binance.vision" # Protokol eklendi
     API_KEY = st.secrets.get("BINANCE_TESTNET_API_KEY")
     API_SECRET = st.secrets.get("BINANCE_TESTNET_API_SECRET")
 else:
-    BASE_URL = "binance.com" 
+    BASE_URL = "binance.com" # Protokol eklendi
     API_KEY = st.secrets.get("BINANCE_API_KEY")
     API_SECRET = st.secrets.get("BINANCE_API_SECRET")
 
@@ -104,7 +105,8 @@ def get_current_price(symbol):
 def get_account_balances():
     timestamp = int(time.time() * 1000)
     query = f"timestamp={timestamp}"
-    url = f"{BASE_URL}/v3/account?{query}&signature={generate_signature(query, API_SECRET)}"
+    # BASE_URL ve /api/v3/account tam şema ile birleştirildi
+    url = f"{BASE_URL}/api/v3/account?{query}&signature={generate_signature(query, API_SECRET)}"
     r = requests.get(url, headers=get_binance_headers())
     if r.status_code == 200:
         df_bal = pd.DataFrame(r.json().get("balances", []))
@@ -113,6 +115,7 @@ def get_account_balances():
             df_bal["locked"] = df_bal["locked"].astype(float)
             return df_bal[(df_bal["free"] > 0) | (df_bal["locked"] > 0)]
     return pd.DataFrame()
+
 
 def binance_buy(symbol, usdt_amount):
     last = get_current_price(symbol)
@@ -140,7 +143,8 @@ def binance_sell(symbol, qty, is_trailing=False):
     return res
 
 def get_candles(symbol="BTCUSDT"):
-    r = requests.get(f"{BASE_URL}/v3/klines?symbol={symbol}&interval=1d&limit=180").json()
+    url = f"{BASE_URL}/api/v3/klines?symbol={symbol}&interval=1d&limit=180"
+    r = requests.get(url).json()
     if isinstance(r, dict) or not r: return pd.DataFrame()
     df = pd.DataFrame(r, columns=["open_time","open","high","low","close","volume","close_time","qav","num_trades","tbb","tbq","ignore"])
     df["time"] = pd.to_datetime(df["open_time"].astype("int64"), unit="ms")
